@@ -11,7 +11,7 @@ import yfinance as yf
 USERNAME = "0733181201"
 PASSWORD = "6714453"
 API_BASE = "https://www.call2all.co.il/ym/api/DownloadFile"
-FILE_PATH = "ivr2:/9/001.wav"  # שנה את הנתיב לפי השלוחה שלך
+FILE_PATH = "ivr2:/9/000.wav"  # שנה את הנתיב לפי השלוחה שלך
 
 # 🎯 מניות לחיפוש + טיקר
 STOCKS = {
