@@ -3,3 +3,4 @@ SpeechRecognition
 pydub
 edge-tts
 yfinance
+gtts
