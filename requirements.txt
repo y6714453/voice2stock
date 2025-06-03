@@ -1,7 +1,6 @@
-requests
-requests_toolbelt
-SpeechRecognition
-pydub
+openai-whisper
 edge-tts
 yfinance
-gtts
+ffmpeg-python
+requests
+requests-toolbelt
