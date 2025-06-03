@@ -4,3 +4,4 @@ yfinance
 edge-tts
 openai-whisper
 ffmpeg-python
+speechrecognition
