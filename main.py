@@ -1,84 +1,103 @@
-# 📁 קובץ: main.py
-
-# 📦 ספריות נדרשות
-import os
 import requests
+import time
+import os
+import io
+import yfinance as yf
 import speech_recognition as sr
 from pydub import AudioSegment
-import yfinance as yf
+from gtts import gTTS
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 
-# 🔐 פרטי התחברות לימות המשיח
-USERNAME = "0733181201"
-PASSWORD = "6714453"
-API_BASE = "https://www.call2all.co.il/ym/api/DownloadFile"
-FILE_PATH = "ivr2:/9/000.wav"  # שנה את הנתיב לפי השלוחה שלך
+# פרטים הזה מועקן לשלוף
+YEMOT_TOKEN = "0733181201:6714453"
+SOURCE_PATH = "ivr2:/9/000.wav"
+TARGET_PATH = "ivr2:/8/000.wav"
 
-# 🎯 מניות לחיפוש + טיקר
-STOCKS = {
+# מילון מניה לסימל
+stocks_dict = {
     "טבע": "TEVA.TA",
     "לאומי": "LUMI.TA",
     "שופרסל": "SAE.TA"
 }
 
-def download_file():
-    print("⬇️ מוריד קובץ מימות...")
-    response = requests.get(API_BASE, params={
-        "token": f"{USERNAME}:{PASSWORD}",
-        "path": FILE_PATH
-    })
-    if response.status_code == 200:
-        with open("recorded.wav", "wb") as f:
-            f.write(response.content)
-        print("✅ קובץ נשמר בהצלחה.")
-        return "recorded.wav"
-    else:
-        print("❌ שגיאה בהורדה:", response.text)
-        return None
 
-def transcribe_audio(file_path):
-    print("🧠 ממיר ל־WAV ותמלול עם Google...")
-    sound = AudioSegment.from_file(file_path)
-    sound.export("converted.wav", format="wav")
+def download_yemot_file():
+    url = "https://www.call2all.co.il/ym/api/DownloadFile"
+    params = {
+        "token": YEMOT_TOKEN,
+        "path": SOURCE_PATH
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200 and len(response.content) > 1000:
+        print("📅 נמצא קובץ בשלוחה 9")
+        return response.content
+    return None
 
+
+def transcribe_audio(wav_bytes):
+    with open("temp.wav", "wb") as f:
+        f.write(wav_bytes)
     recognizer = sr.Recognizer()
-    with sr.AudioFile("converted.wav") as source:
+    with sr.AudioFile("temp.wav") as source:
         audio = recognizer.record(source)
-
     try:
         text = recognizer.recognize_google(audio, language="he-IL")
-        print("📄 טקסט מזוהה:", text)
-        return text
+        print(f"🔊 תמלול: {text}")
+        return text.strip()
     except sr.UnknownValueError:
-        print("😶 לא זוהה טקסט מהקובץ.")
-        return ""
-    except sr.RequestError as e:
-        print("🔌 שגיאת רשת:", e)
+        print("❌ לא זהה מילה")
         return ""
 
-def get_stock_info(ticker):
+
+def get_stock_info(name):
+    ticker = stocks_dict.get(name)
+    if not ticker:
+        return None
     stock = yf.Ticker(ticker)
-    data = stock.history(period="1d")
-    if not data.empty:
-        price = data['Close'].iloc[-1]
-        print(f"💹 מחיר נוכחי של {ticker}: {price} ₪")
-        return price
-    else:
-        print("⚠️ לא נמצאו נתונים למניה זו.")
+    try:
+        info = stock.info
+        price = info.get("regularMarketPrice", 0)
+        change = info.get("regularMarketChangePercent", 0)
+        return f"נפיל {name}: {price} ש"
+    except:
         return None
 
-def main():
-    file_path = download_file()
-    if not file_path:
-        return
 
-    text = transcribe_audio(file_path)
-    for hebrew_name, ticker in STOCKS.items():
-        if hebrew_name in text:
-            print(f"🔍 זוהתה מניה: {hebrew_name}")
-            get_stock_info(ticker)
-            break
-    else:
-        print("🔎 לא זוהתה אף מניה מהידועות.")
+def generate_speech(text):
+    tts = gTTS(text=text, lang='he')
+    tts.save("output.mp3")
+    sound = AudioSegment.from_mp3("output.mp3")
+    sound.export("output.wav", format="wav")
 
-if __name__ == "__main__":
-    main()
+
+def upload_file():
+    with open("output.wav", "rb") as f:
+        m = MultipartEncoder(
+            fields={
+                'token': YEMOT_TOKEN,
+                'path': TARGET_PATH,
+                'upload': ('output.wav', f, 'audio/wav'),
+                'convertAudio': '1'
+            }
+        )
+        res = requests.post("https://www.call2all.co.il/ym/api/UploadFile", data=m, headers={'Content-Type': m.content_type})
+        if res.status_code == 200:
+            print("✅ קובץ עלה בהצלחה 8")
+        else:
+            print("❌ שגיאה בהעלאה")
+
+
+# לולאה רצינות
+while True:
+    data = download_yemot_file()
+    if data:
+        query = transcribe_audio(data)
+        for word in stocks_dict:
+            if word in query:
+                text = get_stock_info(word)
+                if text:
+                    print(f"📈 {text}")
+                    generate_speech(text)
+                    upload_file()
+                break
+    time.sleep(2)
