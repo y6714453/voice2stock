@@ -1,6 +1,6 @@
-openai-whisper
-edge-tts
-yfinance
-ffmpeg-python
 requests
-requests-toolbelt
+requests_toolbelt
+yfinance
+edge-tts
+openai-whisper
+ffmpeg-python
