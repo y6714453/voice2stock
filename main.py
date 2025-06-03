@@ -65,7 +65,7 @@ def get_stock_data(symbol):
 
 # 🗣️ יצירת קובץ קול עם Edge-TTS ואז המרה ל-WAV
 async def generate_edge_tts(text, mp3_path="temp.mp3", wav_path="output.wav"):
-    voice = "he-IL-AvriMale"
+    voice = "he-IL-AvriNeural"
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(mp3_path)
     subprocess.run(["ffmpeg", "-y", "-i", mp3_path, wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
