@@ -2,9 +2,9 @@ import requests
 import asyncio
 import edge_tts
 import os
-import tempfile
 import subprocess
 from requests_toolbelt.multipart.encoder import MultipartEncoder
+import speech_recognition as sr
 
 # 🟡 פרטי המערכת שלך (אל תשכח לעדכן אם תחליף סיסמה)
 USERNAME = "0733181201"
@@ -28,13 +28,21 @@ def download_yemot_file():
         print("❌ לא הצליח להוריד קובץ")
         return None
 
-# 🎙️ תמלול עם Whisper (ספריית openai-whisper)
-def transcribe_audio_whisper(file_path):
-    import whisper
-    model = whisper.load_model("base")
-    result = model.transcribe(file_path, language='he')
-    print("📃 תמלול:", result['text'])
-    return result['text']
+# 🎙️ תמלול עם Google Web Speech API
+def transcribe_audio_google(file_path):
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(file_path) as source:
+        audio = recognizer.record(source)
+    try:
+        text = recognizer.recognize_google(audio, language="he-IL")
+        print("📃 תמלול:", text)
+        return text
+    except sr.UnknownValueError:
+        print("❌ לא הצליח להבין את האודיו")
+        return ""
+    except sr.RequestError as e:
+        print(f"❌ שגיאה בתקשורת עם גוגל: {e}")
+        return ""
 
 # 🧠 ניתוח טקסט לשליפת מניה מתאימה
 def get_stock_symbol(text):
@@ -51,7 +59,6 @@ def get_stock_symbol(text):
 def get_stock_data(symbol):
     import yfinance as yf
     stock = yf.Ticker(symbol)
-    data = stock.history(period="1d")
     current = stock.info.get("currentPrice", 0)
     name = stock.info.get("shortName", "")
     return f"נפילת {name}: {current} ש"
@@ -85,7 +92,7 @@ async def main():
     audio_file = download_yemot_file()
     if not audio_file:
         return
-    text = transcribe_audio_whisper(audio_file)
+    text = transcribe_audio_google(audio_file)
     symbol = get_stock_symbol(text)
     if not symbol:
         print("❌ לא זוהתה מניה מוכרת בתמלול")
