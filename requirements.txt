@@ -1,5 +1,4 @@
 requests
-openai-whisper
+pydub
+SpeechRecognition
 yfinance
-edge-tts
-ffmpeg-python
