@@ -1,6 +1,7 @@
-speechrecognition
+pandas
 yfinance
 edge-tts
 requests
 requests-toolbelt
+speechrecognition
 ffmpeg-python
