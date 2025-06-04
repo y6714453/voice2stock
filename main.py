@@ -1,5 +1,4 @@
-import asyncio
-import edge_tts
+from gtts import gTTS
 import os
 import subprocess
 import requests
@@ -10,22 +9,15 @@ USERNAME = "0733181201"
 PASSWORD = "6714453"
 TOKEN = f"{USERNAME}:{PASSWORD}"
 
-async def generate_edge_tts(text, mp3_path="test.mp3", wav_path="test.wav"):
-    voice = "he-IL-AsafNeural"
-    print("🎤 מנסה ליצור קובץ קול עם edge-tts...")
+def generate_gtts(text, mp3_path="test.mp3", wav_path="test.wav"):
     try:
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(mp3_path)
+        print("🎤 מנסה ליצור קובץ MP3 עם gTTS...")
+        tts = gTTS(text=text, lang='he')
+        tts.save(mp3_path)
 
         if not os.path.exists(mp3_path):
-            print("❌ קובץ MP3 לא נוצר כלל.")
+            print("❌ קובץ MP3 לא נוצר.")
             return False
-
-        size = os.path.getsize(mp3_path)
-        if size == 0:
-            print("❌ קובץ MP3 נוצר אך ריק – ייתכן טקסט בעייתי או בעיה בספרייה.")
-            return False
-        print(f"✅ קובץ MP3 נוצר ({size} בתים)")
 
         subprocess.run([
             "ffmpeg", "-y", "-i", mp3_path,
@@ -60,12 +52,12 @@ def upload_to_yemot(wav_path):
     if r.status_code == 200:
         print("✅ קובץ הועלה לשלוחה 8 בהצלחה.")
     else:
-        print("❌ שגיאה בהעלאה:", r.text)
+        print("❌ שגיאה בהעלאה לימות:", r.text)
 
-async def main():
-    text = "מניית שופרסל נסחרת בשווי של 3589 דולר"
-    success = await generate_edge_tts(text)
+def main():
+    text = "מניית שופרסל נסחרת בשווי של שלושת אלפים חמש מאות שמונים ותשעה דולר"
+    success = generate_gtts(text)
     if success:
         upload_to_yemot("test.wav")
 
-asyncio.run(main())
+main()
