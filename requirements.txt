@@ -4,4 +4,4 @@ SpeechRecognition
 requests-toolbelt
 yfinance
 pandas
-ffmpeg-python
+ffmpeg-python3
