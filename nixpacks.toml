@@ -1,5 +1,2 @@
 [phases.setup]
 nixPkgs = ["ffmpeg", "nodejs"]
-
-[phases.install]
-cmds = ["python3 -m playwright install --with-deps"]
