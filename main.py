@@ -5,6 +5,7 @@ import os
 import subprocess
 import speech_recognition as sr
 from requests_toolbelt.multipart.encoder import MultipartEncoder
+import yfinance as yf
 
 # 🟡 פרטי המערכת שלך
 USERNAME = "0733181201"
@@ -25,7 +26,7 @@ def download_yemot_file():
         print("📭 אין קובץ חדש לשליפה")
         return None
 
-# 🗑️ מחיקת קובץ מהשלוחה
+# 🗑️ מחיקת קובץ מהשלוחה 9
 def delete_yemot_file():
     url = "https://www.call2all.co.il/ym/api/DeleteFile"
     params = {"token": TOKEN, "path": "ivr2:/9/000.wav"}
@@ -61,19 +62,29 @@ def get_stock_symbol(text):
     elif "שופרסל" in text:
         return "SAE.TA"
     return None
-# 📊 שליפת נתוני מניה – כולל הדפסות למעקב
+
+# 📊 שליפת נתוני מניה עם ניסוח מקצועי
 def get_stock_data(symbol):
-    import yfinance as yf
     print(f"🔍 מנסה לשלוף נתונים עבור: {symbol}")
     try:
         stock = yf.Ticker(symbol)
         print("📡 שואל את Yahoo Finance...")
         info = stock.info
-        print("📦 מידע התקבל:", info)
-        name = info.get("shortName", "מניה ללא שם")
+
         price = info.get("currentPrice", 0)
-        print(f"✅ התקבל מחיר: {price} | שם: {name}")
-        return f"המחיר של {name} הוא {price} שקלים"
+        daily_change = info.get("regularMarketChangePercent", 0) * 100
+        year_change = info.get("fiftyTwoWeekChangePercent", 0) * 100
+        distance_from_high = info.get("fiftyTwoWeekHighChangePercent", 0) * 100
+
+        text = (
+            f"מניית {info.get('shortName', 'לא ידוע')} נסחרת כעת בשווי של {price} שקלים חדשים. "
+            f"מתחילת היום, {'עלייה' if daily_change >= 0 else 'ירידה'} של {abs(round(daily_change, 2))} אחוז. "
+            f"מתחילת השנה, {'עלייה' if year_change >= 0 else 'ירידה'} של {abs(round(year_change, 2))} אחוז. "
+            f"המחיר הנוכחי רחוק מהשיא השנתי ב־{abs(round(distance_from_high, 2))} אחוז."
+        )
+
+        print("📝 נוסח קולי:", text)
+        return text
     except Exception as e:
         print("❌ שגיאה בשליפת הנתונים:", e)
         return "אירעה שגיאה בשליפת נתוני המניה"
@@ -117,6 +128,7 @@ async def main_loop():
                 else:
                     print("❌ לא זוהתה מניה מתאימה")
             delete_yemot_file()
+            os.remove(file_path)  # מחיקת הקובץ המקומי
         await asyncio.sleep(2)
 
 # 🚀 התחלה
