@@ -1,6 +1,3 @@
-requests
 edge-tts
-yfinance
+requests
 requests_toolbelt
-SpeechRecognition
-pydub
