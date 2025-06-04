@@ -61,14 +61,22 @@ def get_stock_symbol(text):
     elif "שופרסל" in text:
         return "SAE.TA"
     return None
-
-# 📊 שליפת נתוני מניה
+# 📊 שליפת נתוני מניה – כולל הדפסות למעקב
 def get_stock_data(symbol):
     import yfinance as yf
-    stock = yf.Ticker(symbol)
-    name = stock.info.get("shortName", "")
-    price = stock.info.get("currentPrice", 0)
-    return f"המחיר של {name} הוא {price} שקלים"
+    print(f"🔍 מנסה לשלוף נתונים עבור: {symbol}")
+    try:
+        stock = yf.Ticker(symbol)
+        print("📡 שואל את Yahoo Finance...")
+        info = stock.info
+        print("📦 מידע התקבל:", info)
+        name = info.get("shortName", "מניה ללא שם")
+        price = info.get("currentPrice", 0)
+        print(f"✅ התקבל מחיר: {price} | שם: {name}")
+        return f"המחיר של {name} הוא {price} שקלים"
+    except Exception as e:
+        print("❌ שגיאה בשליפת הנתונים:", e)
+        return "אירעה שגיאה בשליפת נתוני המניה"
 
 # 🎧 יצירת קובץ קול עם Edge-TTS והמרה ל-WAV
 async def generate_edge_tts(text, mp3_path="temp.mp3", wav_path="output.wav"):
