@@ -3,48 +3,55 @@ import asyncio
 import edge_tts
 import os
 import subprocess
-from requests_toolbelt.multipart.encoder import MultipartEncoder
 import speech_recognition as sr
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 
-# 🟡 פרטי המערכת שלך (אל תשכח לעדכן אם תחליף סיסמה)
+# 🟡 פרטי המערכת שלך
 USERNAME = "0733181201"
 PASSWORD = "6714453"
 TOKEN = f"{USERNAME}:{PASSWORD}"
 
-# 📥 שליפת קובץ מהשלוחה (נניח שלוחה 9)
+# 📥 שליפת קובץ מהשלוחה 9
 def download_yemot_file():
     url = "https://www.call2all.co.il/ym/api/DownloadFile"
-    params = {
-        "token": TOKEN,
-        "path": "ivr2:/9/000.wav"
-    }
+    params = {"token": TOKEN, "path": "ivr2:/9/000.wav"}
     response = requests.get(url, params=params)
-    if response.status_code == 200:
+    if response.status_code == 200 and response.content:
         with open("input.wav", "wb") as f:
             f.write(response.content)
         print("✅ ירד קובץ מימות המשיח")
         return "input.wav"
     else:
-        print("❌ לא הצליח להוריד קובץ")
+        print("📭 אין קובץ חדש לשליפה")
         return None
 
-# 🎙️ תמלול עם Google Web Speech API
+# 🗑️ מחיקת קובץ מהשלוחה
+def delete_yemot_file():
+    url = "https://www.call2all.co.il/ym/api/DeleteFile"
+    params = {"token": TOKEN, "path": "ivr2:/9/000.wav"}
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        print("🗑️ הקובץ נמחק מהשלוחה")
+    else:
+        print("❌ שגיאה במחיקה:", response.text)
+
+# 🎙️ תמלול עם Google Speech Recognition
 def transcribe_audio_google(file_path):
     recognizer = sr.Recognizer()
     with sr.AudioFile(file_path) as source:
         audio = recognizer.record(source)
     try:
-        text = recognizer.recognize_google(audio, language="he-IL")
+        text = recognizer.recognize_google(audio, language='he-IL')
         print("📃 תמלול:", text)
         return text
     except sr.UnknownValueError:
-        print("❌ לא הצליח להבין את האודיו")
+        print("❌ לא הבנתי את מה שנאמר")
         return ""
     except sr.RequestError as e:
-        print(f"❌ שגיאה בתקשורת עם גוגל: {e}")
+        print("❌ שגיאה בבקשה ל־Google:", e)
         return ""
 
-# 🧠 ניתוח טקסט לשליפת מניה מתאימה
+# 🧠 זיהוי שם מניה
 def get_stock_symbol(text):
     text = text.strip()
     if "טבע" in text:
@@ -55,22 +62,22 @@ def get_stock_symbol(text):
         return "SAE.TA"
     return None
 
-# 📊 שליפת נתוני מניה מ־Yahoo Finance
+# 📊 שליפת נתוני מניה
 def get_stock_data(symbol):
     import yfinance as yf
     stock = yf.Ticker(symbol)
-    current = stock.info.get("currentPrice", 0)
     name = stock.info.get("shortName", "")
-    return f"נפילת {name}: {current} ש"
+    price = stock.info.get("currentPrice", 0)
+    return f"המחיר של {name} הוא {price} שקלים"
 
-# 🗣️ יצירת קובץ קול עם Edge-TTS ואז המרה ל-WAV
+# 🎧 יצירת קובץ קול עם Edge-TTS והמרה ל-WAV
 async def generate_edge_tts(text, mp3_path="temp.mp3", wav_path="output.wav"):
-    voice = "he-IL-AvriNeural"
+    voice = "he-IL-AvriMale"
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(mp3_path)
     subprocess.run(["ffmpeg", "-y", "-i", mp3_path, wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-# ⬆️ העלאת קובץ לימות המשיח לשלוחה 8
+# ⬆️ העלאת קובץ לימות לשלוחה 8
 def upload_to_yemot(wav_path):
     url = "https://www.call2all.co.il/ym/api/UploadFile"
     m = MultipartEncoder(
@@ -87,19 +94,22 @@ def upload_to_yemot(wav_path):
     else:
         print("❌ שגיאה בהעלאה:", r.text)
 
-# 🚀 הרצת כל השלבים
-async def main():
-    audio_file = download_yemot_file()
-    if not audio_file:
-        return
-    text = transcribe_audio_google(audio_file)
-    symbol = get_stock_symbol(text)
-    if not symbol:
-        print("❌ לא זוהתה מניה מוכרת בתמלול")
-        return
-    stock_text = get_stock_data(symbol)
-    await generate_edge_tts(stock_text)
-    upload_to_yemot("output.wav")
+# 🔁 לולאה מתמשכת כל 2 שניות
+async def main_loop():
+    while True:
+        file_path = download_yemot_file()
+        if file_path:
+            text = transcribe_audio_google(file_path)
+            if text:
+                symbol = get_stock_symbol(text)
+                if symbol:
+                    stock_text = get_stock_data(symbol)
+                    await generate_edge_tts(stock_text)
+                    upload_to_yemot("output.wav")
+                else:
+                    print("❌ לא זוהתה מניה מתאימה")
+            delete_yemot_file()
+        await asyncio.sleep(2)
 
-# 🔁 הפעלה
-asyncio.run(main())
+# 🚀 התחלה
+asyncio.run(main_loop())
