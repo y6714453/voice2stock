@@ -1,7 +1,7 @@
-pandas
-yfinance
-edge-tts
 requests
+edge-tts
+SpeechRecognition
 requests-toolbelt
-speechrecognition
+yfinance
+pandas
 ffmpeg-python
