@@ -1,74 +1,133 @@
-# main.py
-
+import requests
 import asyncio
-import time
-from stock_utils import load_stock_list, get_best_match, get_stock_data, format_text
-from yemot_api import download_yemot_file, delete_yemot_file, upload_yemot_file
-from audio_tools import text_to_speech, convert_mp3_to_wav
-from speech_recognition import Recognizer, AudioFile
+import edge_tts
+import os
+import subprocess
+import speech_recognition as sr
+from requests_toolbelt.multipart.encoder import MultipartEncoder
+import yfinance as yf
+from datetime import datetime, timedelta
 
-# 🟡 פרטי התחברות לימות המשיח (אפשר גם .env בעתיד)
-TOKEN = "0733181201:6714453"
-STOCKS_CSV_PATH = "hebrew_stocks.csv"
+USERNAME = "0733181201"
+PASSWORD = "6714453"
+TOKEN = f"{USERNAME}:{PASSWORD}"
 
-def transcribe_audio(filename):
-    recognizer = Recognizer()
-    with AudioFile(filename) as source:
-        audio_data = recognizer.record(source)
+# 📥 הורדת קובץ מימות
+def download_yemot_file():
+    url = "https://www.call2all.co.il/ym/api/DownloadFile"
+    params = {"token": TOKEN, "path": "ivr2:/9/000.wav"}
+    response = requests.get(url, params=params)
+    if response.status_code == 200 and response.content:
+        with open("input.wav", "wb") as f:
+            f.write(response.content)
+        print("✅ ירד קובץ מימות המשיח")
+        return "input.wav"
+    else:
+        print("📭 אין קובץ חדש")
+        return None
+
+# 🗑️ מחיקת הקובץ משלוחה 9
+def delete_yemot_file():
+    url = "https://www.call2all.co.il/ym/api/DeleteFile"
+    params = {"token": TOKEN, "path": "ivr2:/9/000.wav"}
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        print("🗑️ הקובץ נמחק מהשלוחה")
+    else:
+        print("❌ שגיאה במחיקה:", response.text)
+
+# 🎙️ תמלול
+def transcribe_audio_google(file_path):
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(file_path) as source:
+        audio = recognizer.record(source)
     try:
-        text = recognizer.recognize_google(audio_data, language="he-IL")
-        print(f"🗣️ זוהה: {text}")
-        return text.strip()
+        text = recognizer.recognize_google(audio, language='he-IL')
+        print("📃 תמלול:", text)
+        return text
     except Exception as e:
-        print(f"❌ שגיאה בזיהוי קולי: {e}")
+        print("❌ שגיאה בתמלול:", e)
         return ""
 
-async def process_stock_request():
-    stock_list = load_stock_list(STOCKS_CSV_PATH)
+# 🔍 תרגום שם למניה
+def get_stock_symbol(text):
+    if "טבע" in text:
+        return "TEVA.TA", "טבע"
+    elif "לאומי" in text:
+        return "LUMI.TA", "לאומי"
+    elif "שופרסל" in text:
+        return "SAE.TA", "שופרסל"
+    return None, None
 
-    print("🔁 בודק אם יש קובץ חדש בשלוחה 9...")
-    input_path = download_yemot_file(TOKEN)
-    if not input_path:
-        return
+# 📊 שליפת נתונים ויצירת נוסח
+def get_stock_data(symbol, hebrew_name):
+    try:
+        stock = yf.Ticker(symbol)
+        hist = stock.history(period="6mo")
+        today = hist.iloc[-1]
+        price = round(today["Close"], 2)
+        today_change = round(((today["Close"] - today["Open"]) / today["Open"]) * 100, 1)
 
-    query = transcribe_audio(input_path)
-    if not query:
-        print("⚠️ לא זוהה טקסט מההקלטה")
-        delete_yemot_file(TOKEN)
-        return
+        # השוואות
+        start_year = hist.loc[hist.index >= datetime(datetime.now().year, 1, 1)]
+        yearly_change = round(((today["Close"] - start_year["Open"][0]) / start_year["Open"][0]) * 100, 1) if not start_year.empty else 0
 
-    best_match = get_best_match(query, stock_list)
-    if not best_match:
-        print("❌ לא נמצאה מניה מתאימה")
-        delete_yemot_file(TOKEN)
-        return
+        max_price = hist["Close"].max()
+        distance_from_high = round(((today["Close"] - max_price) / max_price) * 100, 1)
 
-    ticker = stock_list[best_match]
-    data = get_stock_data(ticker)
-    if not data:
-        print("⚠️ לא נמצאו נתונים למניה")
-        delete_yemot_file(TOKEN)
-        return
+        # טקסט מנוסח
+        result = (
+            f"מניית {hebrew_name} נסחרת עכשיו בשווי של {price} שקלים חדשים. "
+            f"מתחילת היום, {'עלייה' if today_change >= 0 else 'ירידה'} של {abs(today_change)} אחוז. "
+            f"מתחילת השנה, {'עלייה' if yearly_change >= 0 else 'ירידה'} של {abs(yearly_change)} אחוז. "
+            f"המחיר הנוכחי רחוק מהשיא ב־{abs(distance_from_high)} אחוז."
+        )
+        print("📝 נוסח קולי:", result)
+        return result
+    except Exception as e:
+        print("❌ שגיאה בשליפת הנתונים:", e)
+        return "אירעה שגיאה בשליפת נתוני המניה"
 
-    text = format_text(best_match, ticker, data)
-    print("📄 טקסט מוכן:", text)
+# 🗣️ יצירת קול
+async def generate_edge_tts(text, mp3_path="temp.mp3", wav_path="output.wav"):
+    voice = "he-IL-AsafNeural"
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(mp3_path)
+    subprocess.run(["ffmpeg", "-y", "-i", mp3_path, wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    mp3_file = "output.mp3"
-    wav_file = "output.wav"
-    await text_to_speech(text, mp3_file)
-    convert_mp3_to_wav(mp3_file, wav_file)
-    upload_yemot_file(wav_file, TOKEN)
+# ⬆️ העלאה לשלוחה 8
+def upload_to_yemot(wav_path):
+    url = "https://www.call2all.co.il/ym/api/UploadFile"
+    m = MultipartEncoder(
+        fields={
+            "token": TOKEN,
+            "path": "ivr2:/8/000.wav",
+            "convertAudio": "0",
+            "upload": ("000.wav", open(wav_path, "rb"), "audio/wav")
+        }
+    )
+    r = requests.post(url, data=m, headers={"Content-Type": m.content_type})
+    if r.status_code == 200:
+        print("✅ קובץ הועלה לשלוחה 8")
+    else:
+        print("❌ שגיאה בהעלאה:", r.text)
 
-    delete_yemot_file(TOKEN)
-    print("✅ הסתיים תהליך עבור", best_match)
-
-def main_loop():
+# 🔁 ריצה מתמשכת
+async def main_loop():
     while True:
-        try:
-            asyncio.run(process_stock_request())
-        except Exception as e:
-            print("❌ שגיאה בלולאה הראשית:", e)
-        time.sleep(2)
+        file_path = download_yemot_file()
+        if file_path:
+            text = transcribe_audio_google(file_path)
+            if text:
+                symbol, hebrew_name = get_stock_symbol(text)
+                if symbol:
+                    stock_text = get_stock_data(symbol, hebrew_name)
+                    await generate_edge_tts(stock_text)
+                    upload_to_yemot("output.wav")
+                else:
+                    print("❌ לא זוהתה מניה מתאימה")
+            delete_yemot_file()
+        await asyncio.sleep(2)
 
-if __name__ == "__main__":
-    main_loop()
+# 🚀 הפעלה
+asyncio.run(main_loop())
