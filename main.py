@@ -1,102 +1,98 @@
+import speech_recognition as sr
+import yfinance as yf
+from difflib import get_close_matches
 import edge_tts
-import asyncio
 import subprocess
 import requests
-import os
-import json
 from requests_toolbelt.multipart.encoder import MultipartEncoder
+import os
+import asyncio
 
-# 📞 פרטי התחברות (דוגמה – לא אמיתיים)
+# 🟡 הגדרות התחלתיות
 USERNAME = "0733181201"
 PASSWORD = "6714453"
-TARGET_PATH = "ivr2:/8/"
-ITEMS_FILE = "stock_items.json"
+VOICE = "he-IL-AvriNeural"
+WAV_PATH = "temp.wav"
+MP3_PATH = "temp.mp3"
+UPLOAD_PATH = "ivr2:/8/000.wav"
 
-# 🧠 התחברות וקבלת טוקן מ־ימות המשיח
-def get_token():
-    response = requests.get(f"https://www.call2all.co.il/ym/api/Login?username={USERNAME}&password={PASSWORD}")
-    data = response.json()
-    token = data.get("token")
-    if not token:
-        raise Exception("❌ שגיאה בקבלת טוקן")
-    print("✅ טוקן נשלף:", token)
-    return token
+# 🎯 מילון שמות מניות
+stock_dict = {
+    "טבע": "TEVA.TA",
+    "לאומי": "LUMI.TA",
+    "שופרסל": "SAE.TA"
+}
 
-# 💬 שליפת טקסט בסיסי למניה
-def get_text(symbol, name):
+# 🧠 מציאת ההתאמה הקרובה ביותר
+def get_best_match(query):
+    matches = get_close_matches(query, stock_dict.keys(), n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
+# 🧾 תמלול מהקלטה
+def transcribe_from_yemot():
+    print("🎙️ מוריד קובץ הקלטה משלוחה 9...")
+    r = requests.get("https://www.call2all.co.il/ym/api/DownloadFile", params={
+        "token": f"{USERNAME}:{PASSWORD}",
+        "path": "ivr2:/9/001.wav"
+    })
+    with open("input.wav", "wb") as f:
+        f.write(r.content)
+
+    print("🔠 ממיר לקובץ טקסט...")
+    recognizer = sr.Recognizer()
+    with sr.AudioFile("input.wav") as source:
+        audio = recognizer.record(source)
+        try:
+            return recognizer.recognize_google(audio, language="he-IL")
+        except:
+            return ""
+
+# 📈 שליפת מחיר מניה
+def get_stock_text(ticker, name):
     try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1d"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()['chart']['result'][0]
-        price = data['meta']['regularMarketPrice']
-        return f"מניית {name} נסחרת בשווי של {price:.2f} דולר"
-    except Exception as e:
-        print("❌ שגיאה בשליפת נתונים:", e)
-        return f"מניית {name} - נתון לא זמין כרגע"
+        data = yf.Ticker(ticker).history(period="7d")
+        current = data["Close"].iloc[-1]
+        open_today = data["Open"].iloc[-1]
+        change = ((current - open_today) / open_today) * 100
+        sign = "עלייה" if change > 0 else "ירידה"
+        percent = f"{abs(change):.1f}".replace(".", " נקודה ")
+        return f"מניית {name} נסחרת כעת בשווי של {round(current, 2)} שקלים חדשים. מתחילת היום נרשמה {sign} של {percent} אחוז."
+    except:
+        return f"לא ניתן לשלוף נתונים עבור מניית {name}."
 
-# 🎙 יצירת MP3
-async def create_mp3(text, filename):
-    print(f"🎤 מייצר קובץ קול עבור הטקסט: {text}")
-    tts = edge_tts.Communicate(text, "he-IL-AvriNeural")
-    await tts.save(filename)
-    print(f"✅ קובץ MP3 נוצר: {filename}")
+# 🎵 יצירת MP3 והמרה ל-WAV
+async def create_voice_file(text):
+    tts = edge_tts.Communicate(text, VOICE)
+    await tts.save(MP3_PATH)
+    subprocess.run(["ffmpeg", "-y", "-i", MP3_PATH, "-ar", "8000", "-ac", "1", WAV_PATH])
 
-# 🎛 המרה ל-WAV
-def convert_to_wav(mp3_file, wav_file):
-    print(f"🎛 ממיר את {mp3_file} ל־{wav_file}")
-    subprocess.run([
-        "ffmpeg", "-y",
-        "-i", mp3_file,
-        "-ac", "1",
-        "-ar", "8000",
-        "-sample_fmt", "s16",
-        wav_file
-    ])
+# ⬆️ העלאה לשלוחה 8
+def upload_to_yemot():
+    with open(WAV_PATH, 'rb') as f:
+        m = MultipartEncoder(fields={
+            'username': USERNAME,
+            'password': PASSWORD,
+            'path': UPLOAD_PATH,
+            'upload': ('000.wav', f, 'audio/wav')
+        })
+        r = requests.post("https://www.call2all.co.il/ym/api/UploadFile", data=m, headers={'Content-Type': m.content_type})
+        print("🧾 תגובת ימות:", r.text)
 
-# ☁️ העלאה לימות
-def upload_to_yemot(wav_file, path, token):
-    if not os.path.exists(wav_file):
-        print(f"❌ הקובץ {wav_file} לא נמצא")
+# ▶️ הרצה ראשית
+async def main():
+    text = transcribe_from_yemot()
+    print("📃 תמלול:", text)
+
+    match = get_best_match(text)
+    if not match:
+        print("❌ לא נמצאה מניה מתאימה.")
         return
 
-    with open(wav_file, 'rb') as f:
-        m = MultipartEncoder(
-            fields={
-                'token': token,
-                'path': path + "000.wav",
-                'upload': (wav_file, f, 'audio/wav')
-            }
-        )
-        response = requests.post(
-            'https://www.call2all.co.il/ym/api/UploadFile',
-            data=m,
-            headers={'Content-Type': m.content_type}
-        )
+    ticker = stock_dict[match]
+    summary = get_stock_text(ticker, match)
+    print("📜 נוסח קולי:", summary)
 
-    print(f"🔍 קוד תגובה: {response.status_code}")
-    print(f"🧾 טקסט תגובה: {response.text}")
-    if response.status_code == 200 and 'OK' in response.text:
-        print(f"✅ הועלה בהצלחה ל־{path}")
-    else:
-        print("❌ שגיאה בהעלאה לימות")
+    await create_voice_file(summary)
+    upload_to_yemot()
 
-# 🚀 פונקציית הרצה ראשית
-async def main():
-    token = get_token()
-
-    with open(ITEMS_FILE, encoding="utf-8") as f:
-        items = json.load(f)
-
-    for item in items:
-        print(f"🔄 מטפל ב־{item['name']} ({item['symbol']})")
-        text = get_text(item["symbol"], item["name"])
-        mp3_file = "temp.mp3"
-        wav_file = "temp.wav"
-
-        await create_mp3(text, mp3_file)
-        convert_to_wav(mp3_file, wav_file)
-        upload_to_yemot(wav_file, item["target_path"], token)
-
-# 📥 הרצה
 asyncio.run(main())
