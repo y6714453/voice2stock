@@ -1,3 +1,6 @@
+speechrecognition
+yfinance
 edge-tts
 requests
-requests_toolbelt
+requests-toolbelt
+ffmpeg-python
